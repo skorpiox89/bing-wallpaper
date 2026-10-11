@@ -17,6 +17,7 @@ internal sealed class TrayApp : ApplicationContext
     private readonly ToolStripMenuItem _previousItem;
     private readonly ToolStripMenuItem _nextItem;
     private readonly ToolStripMenuItem _todayItem;
+    private readonly ToolStripMenuItem _cleanupItem;
     private readonly ToolStripMenuItem _autostartItem;
     private readonly Timer _dailyTimer;
     private readonly Timer _startupTimer;
@@ -33,16 +34,21 @@ internal sealed class TrayApp : ApplicationContext
             async (_, _) => await GuardAsync(() => _service.StepAsync(1)));
         _todayItem = new ToolStripMenuItem("换今天的", null,
             async (_, _) => await GuardAsync(() => _service.ApplyTodayAsync(withHistory: false)));
+        _cleanupItem = new ToolStripMenuItem("清理旧图片", null, async (_, _) => await GuardAsync(ManualCleanupAsync))
+        {
+            ToolTipText = $"删除 {WallpaperService.RetentionDays} 天前的图片，当前显示的那张会保留",
+        };
         _autostartItem = new ToolStripMenuItem("开机自启", null, (_, _) => ToggleAutostart());
         var exitItem = new ToolStripMenuItem("退出", null, (_, _) => Quit());
 
-        _menu = new ContextMenuStrip();
+        _menu = new ContextMenuStrip { ShowItemToolTips = true };
         _menu.Items.AddRange(new ToolStripItem[]
         {
             _previousItem,
             _nextItem,
             _todayItem,
             new ToolStripSeparator(),
+            _cleanupItem,
             _autostartItem,
             new ToolStripSeparator(),
             exitItem,
@@ -87,6 +93,7 @@ internal sealed class TrayApp : ApplicationContext
             Log.Info(firstRun ? "首次运行" : "启动");
 
             await _service.ApplyTodayAsync(withHistory: true);
+            _service.CleanupOldImages(); // 启动时清一次，之前攒下的旧图会被收掉
 
             if (firstRun)
             {
@@ -150,11 +157,38 @@ internal sealed class TrayApp : ApplicationContext
         RefreshUi();
     }
 
+    /// <summary>手动清理：用户主动点的，所以无论有没有东西可清都给个反馈。</summary>
+    private Task<bool> ManualCleanupAsync()
+    {
+        var (count, bytes) = _service.CleanupOldImages();
+        var text = count > 0
+            ? $"已清理 {count} 张旧图片，释放 {bytes / 1024.0 / 1024.0:F1} MB"
+            : $"没有需要清理的图片（保留最近 {WallpaperService.RetentionDays} 天）";
+
+        ShowBalloon(text);
+        return Task.FromResult(true);
+    }
+
+    private void ShowBalloon(string text)
+    {
+        try
+        {
+            _tray.BalloonTipTitle = "Bing 壁纸";
+            _tray.BalloonTipText = text;
+            _tray.ShowBalloonTip(4000);
+        }
+        catch (Exception ex)
+        {
+            Log.Error("弹气泡失败", ex);
+        }
+    }
+
     private void RefreshUi()
     {
         _previousItem.Enabled = !_busy && _service.CanGoPrevious;
         _nextItem.Enabled = !_busy && _service.CanGoNext;
         _todayItem.Enabled = !_busy;
+        _cleanupItem.Enabled = !_busy;
         _autostartItem.Checked = Autostart.IsEnabled;
     }
 
