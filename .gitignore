@@ -1,0 +1,10 @@
+## 构建产物
+bin/
+obj/
+dist/
+*.user
+
+## 运行时数据（正常情况下在 %LOCALAPPDATA%\BingWallpaper）
+images/
+index.json
+log.txt
