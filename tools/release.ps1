@@ -107,11 +107,17 @@ if (-not $SkipInstaller) {
     }
 }
 
-# ---- 4. 校验和 ----
+# ---- 4. 校验和（只覆盖对外发布的产物，裸 exe 是中间产物不算） ----
 Write-Host '==> 4/4 SHA256SUMS.txt' -ForegroundColor Cyan
 $sums = Join-Path $dist 'SHA256SUMS.txt'
-$lines = Get-ChildItem $dist -File |
-    Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
+$sumFiles = @(Get-ChildItem $dist -File | Where-Object {
+    $_.Name -like 'BingWallpaper-Setup-*.exe' -or $_.Name -like 'BingWallpaper-*-portable.zip'
+})
+if (-not $sumFiles) {
+    # 只编译 exe（-SkipInstaller -SkipPortable）时退化成给 exe 算一份
+    $sumFiles = @(Get-ChildItem $dist -File | Where-Object { $_.Name -eq 'BingWallpaper.exe' })
+}
+$lines = $sumFiles |
     Sort-Object Name |
     ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name }
 Set-Content -Path $sums -Value $lines -Encoding ascii
