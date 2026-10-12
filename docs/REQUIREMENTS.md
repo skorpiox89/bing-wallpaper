@@ -58,7 +58,7 @@
 - 图片预览 / 画廊 / 收藏 / 历史日历
 - 多显示器分别设置、锁屏壁纸、屏保
 - 设置窗口、主题、定时粒度配置
-- 自动更新、安装包、UWP 打包
+- 自动更新、UWP 打包（安装包与发布流程见阶段 6）
 - 切换时弹气泡通知
 
 ---
@@ -183,3 +183,77 @@ z09.bing-wallpaper/
 - 别动 `WallpaperStyle` 注册表，否则会覆盖用户的桌面个性化设置。
 - 把图片存到 `%LOCALAPPDATA%` 而非程序目录，避免 exe 放 Program Files 时无写权限。
 - 图片按天累积不清理：4K 屏约 2.5 MB/天，一年约 1 GB（见 README 已知限制）。
+
+---
+
+## 8. 阶段 6：打包与自动发布（追加需求，2026-10-12）
+
+### 8.1 需求 R6 与验收标准
+
+**R6：打 tag 触发 GitHub Actions，自动构建 Windows 安装包并发布 GitHub Release。**
+
+| # | 验收标准 | 状态 |
+|---|---|---|
+| AC1 | `git push origin vX.Y.Z` 后 Release 页出现 `BingWallpaper-Setup-X.Y.Z-win-x64.exe`、便携 zip、`SHA256SUMS.txt` | 待真实发版验证 |
+| AC2 | 干净 Win10/11 x64：免 UAC、免预装 .NET；装完托盘出现、每日换图正常 | 待真机验证 |
+| AC3 | tag / 安装包文件名 / exe 版本属性 /「应用和功能」版本号四处一致 | ✅ 本地已验证前三处 |
+| AC4 | 安装时自动结束旧进程；卸载清掉程序目录、开始菜单项、`HKCU\...\Run\BingWallpaper`、`%LOCALAPPDATA%\BingWallpaper` | ✅ wine 静默安装/卸载已验证 |
+| AC5 | `workflow_dispatch` 手动跑能出同样的包且不创建 Release | 待首次线上演练 |
+
+### 8.2 设计决策
+
+| # | 决策 | 理由 |
+|---|---|---|
+| D9 | 安装器用 **Inno Setup**（≥6.3） | per-user 免 UAC、单文件 setup、脚本简单；GitHub windows 镜像预装 6.7.1 |
+| D10 | **per-user 安装**（`PrivilegesRequired=lowest`，装到 `%LOCALAPPDATA%\Programs\BingWallpaper`） | 与 HKCU 自启、`%LOCALAPPDATA%` 数据目录的 per-user 语义一致，不引入 UAC |
+| D11 | 安装包内放**自包含单文件**（63 MB）+ 另出便携 zip | 零前置依赖；自包含产物自带 `vcruntime140_cor3.dll`，无需 VC++ 运行时 |
+| D12 | 触发 = tag `v*` + 手动 `workflow_dispatch`（手动只出 artifact 不发 Release） | 演练安全；`gh release create --generate-notes` 自动 notes，`-` 后缀自动 Pre-release |
+| D13 | **tag 是版本唯一真源**：`-p:Version=` 写入程序集/PE，`/DAppVersion` 写入安装包 | csproj 里的 1.0.0 仅作本地默认 |
+| D14 | 安装/卸载时**强制结束** `BingWallpaper.exe`（taskkill），不用 AppMutex 提示 | 托盘程序无主窗口，强杀最顺滑 |
+| D15 | 卸载**连数据一起删**（图片/索引/日志） | 用户选择，不留残渣 |
+| D16 | 不创建桌面图标（仅开始菜单） | 托盘程序，无需桌面图标 |
+| D17 | 代码签名暂缓，先提供 SHA256 校验；预留 SignPath Foundation 申请路径 | 申请流程见 docs/RELEASING.md 第五节 |
+| D18 | 许可证 **MIT**；`windows-latest` 跑 CI，ISCC 动态定位 + choco 兜底 | 公开仓库、免费额度；镜像工具漂移不会断 |
+
+### 8.3 功能拆解与完成情况
+
+**Must**
+- [x] F11 安装包（Inno）：per-user、开始菜单、覆盖升级、卸载自启项+数据、装完可勾选启动、中文向导
+- [x] F12 版本真源：tag → 程序集/PE/安装包版本
+- [x] F13 CI 触发：tag push + workflow_dispatch
+- [x] F14 产物：Setup.exe + 便携 zip + SHA256SUMS
+- [x] F15 Release 自动化：自动建 Release、自动 notes、预发布标记
+
+**Should**
+- [x] F16 便携 zip
+- [x] F17 PR/push 编译校验（`ci.yml` 完整出包但不发布）
+
+**Won't（本期不做）**
+- 代码签名、自动更新（app 内升级）、MSI/MSIX、arm64 安装包、winget 提审
+
+### 8.4 实现文件
+
+```
+.github/workflows/release.yml       tag v* → 出包 + gh release create
+.github/workflows/ci.yml            push/PR → 完整出包冒烟（不发布）
+tools/release.ps1                   本地/CI 共用发布入口（版本校验 → exe → zip → ISCC → 校验和）
+tools/publish.ps1                   新增 -Version / -OutputDir
+installer/bing-wallpaper.iss        Inno 脚本（per-user、强杀旧进程、卸载清理）
+installer/languages/ChineseSimplified.isl   安装向导中文（Inno 官方仓库 6.5.0+ 版本）
+LICENSE                             MIT
+docs/RELEASING.md                   发版流程、真机验收清单、SignPath 申请步骤
+```
+
+### 8.5 验收记录（2026-10-12，本机 Linux 交叉验证）
+
+用 .NET 8.0.419 交叉编译（`EnableWindowsTargeting`），并用 wine + Inno Setup 6.7.3 真实执行 ISCC：
+
+- `pwsh tools/release.ps1 -Version 1.0.1` 一次通过，产物：
+  `BingWallpaper.exe` 62.9 MB（PE 版本 1.0.1.0）→ 便携 zip 57.6 MB → Setup 58.4 MB → `SHA256SUMS.txt`
+- Setup 在 wine 里 `/VERYSILENT` 安装成功：程序落在 `%LOCALAPPDATA%\Programs\BingWallpaper`，
+  开始菜单生成「Bing 壁纸」快捷方式，写 HKCU 卸载项，AppId 正确
+- 卸载注入的自启 Run 值 + 伪造的 `images/`、`index.json`、`log.txt` 后静默卸载：
+  程序目录、开始菜单项、Run 值、数据目录、卸载项全部清掉；`[Code]` 的 taskkill 分支已执行（wine 下返回 128，属预期）
+- 异常路径：非法版本号报错、`-RequireInstaller` 且找不到 ISCC 报错、非 Windows 无 ISCC 时警告并跳过
+- 预发布版本 `v1.0.1-beta.1`：FileVersion=1.0.1.0、ProductVersion=1.0.1-beta.1、安装包名带 `-beta.1`
+- 待办（需真机）：AC1/AC2/AC5，以及 SmartScreen 提示、覆盖安装、重启自启——清单见 `docs/RELEASING.md`

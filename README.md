@@ -17,17 +17,23 @@ Windows 托盘小程序：每天自动把必应当日壁纸设成桌面壁纸，
 
 鼠标悬停托盘图标可以看到当前这张图的日期和标题。
 
-## 使用
+## 下载安装
 
-程序已经装好并正在运行：
+从 [Releases](https://github.com/skorpiox89/bing-wallpaper/releases) 下载：
 
-```
-C:\Users\<你>\AppData\Local\Programs\BingWallpaper\BingWallpaper.exe
-```
+| 文件 | 说明 |
+| --- | --- |
+| `BingWallpaper-Setup-<版本>-win-x64.exe` | **安装版（推荐）**：免管理员，装到 `%LOCALAPPDATA%\Programs\BingWallpaper`，自带卸载；安装时会自动结束正在运行的旧版本 |
+| `BingWallpaper-<版本>-win-x64-portable.zip` | 便携版：解压后直接运行 `BingWallpaper.exe` |
+| `SHA256SUMS.txt` | 上述文件的 SHA-256 校验和 |
+
+> ⚠️ 安装包目前没有代码签名，SmartScreen 首次运行会提示「Windows 已保护你的电脑」：
+> 点「更多信息 → 仍要运行」即可。也可先校验文件
+> `Get-FileHash .\BingWallpaper-Setup-1.0.1-win-x64.exe -Algorithm SHA256`，与 `SHA256SUMS.txt` 对照。
 
 - 托盘图标默认在任务栏的「隐藏的图标」（`^`）里，可以拖出来固定。
-- 重新编译后需要手动覆盖安装目录里的 exe（先右键托盘 → 退出，再覆盖，再启动）。
-- **换位置**：把 exe 挪到别处后，在托盘菜单里把「开机自启」关掉再打开一次，让注册表指向新路径。
+- 安装版升级 = 直接装新版本，会覆盖旧版本；程序在运行没关系，安装器会先把它结束掉。
+- **便携版换位置**：把 exe 挪到别处后，在托盘菜单里把「开机自启」关掉再打开一次，让注册表指向新路径。
 
 ## 数据位置
 
@@ -38,7 +44,9 @@ C:\Users\<你>\AppData\Local\Programs\BingWallpaper\BingWallpaper.exe
 └─ log.txt      运行日志（超过 1 MB 自动清空）
 ```
 
-卸载 = 删掉上面这个目录 + 程序目录，再清掉注册表 `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 里的 `BingWallpaper`。
+卸载（安装版）=「设置 → 应用 → 已安装的应用 → Bing 壁纸 → 卸载」：程序目录、开始菜单项、注册表
+`HKCU\Software\Microsoft\Windows\CurrentVersion\Run` 里的 `BingWallpaper`，以及上面这个数据目录都会一起删掉。
+便携版卸载 = 退出程序，删掉 exe。
 
 ## 从源码构建
 
@@ -46,10 +54,14 @@ C:\Users\<你>\AppData\Local\Programs\BingWallpaper\BingWallpaper.exe
 dotnet build src/BingWallpaper/BingWallpaper.csproj -c Release   # 编译
 pwsh tools/publish.ps1                                          # 单文件 exe ≈ 343 KB（需要 .NET 8 桌面运行时）
 pwsh tools/publish.ps1 -SelfContained                           # 自包含单文件 ≈ 63 MB，任何机器直接跑
+pwsh tools/release.ps1 -Version 1.0.1                           # 出发布产物：exe + 便携 zip + 安装包 + 校验和
 pwsh tools/make-icon.ps1                                        # 改完图标绘制逻辑后重新生成 app.ico
 ```
 
-产物在 `dist\`。
+产物在 `dist\`。`release.ps1` 需要本机装有 [Inno Setup](https://jrsoftware.org/isdl.php) 6.3+。
+
+打 tag（`v1.0.1` / `v1.0.1-beta.1`）后，GitHub Actions 会自动完成同样的流程并创建 Release，
+流程与真机验收清单见 [docs/RELEASING.md](docs/RELEASING.md)。
 
 ## 设计要点
 
