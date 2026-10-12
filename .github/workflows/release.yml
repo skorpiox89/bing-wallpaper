@@ -79,7 +79,10 @@ jobs:
         run: |
           $tag = '${{ github.ref_name }}'
           $assets = @(Get-ChildItem dist -File |
-            Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
+            Where-Object {
+              $_.Name -like 'BingWallpaper-Setup-*.exe' -or
+              $_.Name -like 'BingWallpaper-*-portable.zip'
+            } |
             ForEach-Object { $_.FullName })
           $assets += (Resolve-Path dist/SHA256SUMS.txt).Path
           $ghArgs = @('--title', $tag, '--generate-notes', '--verify-tag')
